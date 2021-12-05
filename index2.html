@@ -1,0 +1,613 @@
+<!doctype html>
+<html>
+   <body>  
+
+      <canvas  width = "600" height = "600" id = "my_Canvas"></canvas>  
+        
+ 
+<script id="vertex-shader" type="x-shader/x-vertex">
+
+attribute  vec4 position ;  
+varying vec4 fColor;   
+
+attribute vec2 vTextureCoord; 
+varying vec2 fTextureCoord;
+
+
+
+attribute vec4 vNormal;  
+
+uniform vec4 lightPosition0;  
+uniform vec4 lightPosition1;  
+uniform vec4 lightPosition2;  
+
+
+uniform vec4 diffuseProduct0;
+uniform vec4 specularProduct0;   
+uniform vec4 diffuseProduct1;
+uniform vec4 specularProduct1;  
+uniform vec4 diffuseProduct2;
+uniform vec4 specularProduct2;   
+
+uniform float  shininess0;  
+uniform float  shininess1; 
+uniform float  shininess2;
+
+
+uniform vec4 ambientProduct;
+
+
+
+uniform mat4 Mmatrix;
+uniform mat4 Pmatrix;
+uniform mat4 Vmatrix;    
+uniform mat4 scaleMatrix;  
+uniform vec3 theta;    
+
+void main() 
+{  
+  // Compute the sines and cosines of theta for each of
+  //   the three axes in one computation.
+  vec3 angles = radians( theta );
+  vec3 c = cos( angles );
+  vec3 s = sin( angles );   
+
+  // Remeber: these matrices are column-major
+  mat4 rx = mat4( 
+      1.0,  0.0,  0.0, 0.0,
+  0.0,  c.x,  s.x, 0.0,
+  0.0, -s.x,  c.x, 0.0,
+  0.0,  0.0,  0.0, 1.0
+  );  
+
+
+  mat4 ry = mat4( c.y, 0.0, -s.y, 0.0,
+      0.0, 1.0,  0.0, 0.0,
+      s.y, 0.0,  c.y, 0.0,
+      0.0, 0.0,  0.0, 1.0 );
+
+
+  mat4 rz = mat4( 
+      c.z, s.z, 0.0, 0.0,
+  -s.z,  c.z, 0.0, 0.0,
+  0.0,  0.0, 1.0, 0.0,
+  0.0,  0.0, 0.0, 1.0
+  );    
+
+
+  vec3 vertexPos = position.xyz;
+  vec3 lightPos0 = lightPosition0.xyz; 
+  vec3 lightPos1 = lightPosition1.xyz;  
+  vec3 lightPos2 = lightPosition2.xyz;   
+
+
+  vec3 lightVector0 = normalize(lightPos0 - vertexPos);   
+  vec3 lightVector1 = normalize(lightPos1 - vertexPos);  
+  vec3 lightVector2 = normalize(lightPos2 - vertexPos); 
+
+  vec3 normalVector = normalize((rz*ry*rx*scaleMatrix*vNormal).xyz);
+
+
+  // the magic line! 
+  float distance0 = length(lightPos0 - vertexPos );  
+  float distance1 = length(lightPos1 - vertexPos );  
+  float distance2 = length(lightPos2 - vertexPos );  
+
+
+  float diffuseValue0 =  max ( dot(lightVector0, normalVector), 0.0);  
+  float diffuseValue1 =  max ( dot(lightVector1, normalVector), 0.0) ;  
+  float diffuseValue2 =  max ( dot(lightVector2, normalVector), 0.0)  ;   
+
+  float specularValue0 = pow(diffuseValue0, shininess0);  
+  float specularValue1 = pow(diffuseValue1, shininess1);  
+  float specularValue2 = pow(diffuseValue2, shininess2); 
+
+
+  
+
+    fColor =  diffuseProduct0* diffuseValue0 + diffuseProduct1* diffuseValue1 + diffuseProduct2* diffuseValue2 +  specularProduct0*specularValue0 + specularProduct1*specularValue1+ specularProduct2*specularValue2  + ambientProduct; 
+     gl_Position = Pmatrix*Vmatrix*Mmatrix*rz*ry*rx*scaleMatrix*position;   
+
+     fTextureCoord = vTextureCoord;
+}   
+
+
+</script> 
+
+
+<script id="fragment-shader" type="x-shader/x-fragment">
+
+precision mediump float;
+
+varying vec4 fColor;
+uniform sampler2D textureData;
+varying vec2 fTextureCoord; 
+
+void
+main()
+{   
+  vec4 colorFromTexture = texture2D(textureData, fTextureCoord); 
+
+   gl_FragColor =  fColor*0.2 + colorFromTexture*0.8 ; 
+}
+</script> 
+
+
+
+<script>  
+var selectedFigure = 0;   
+var drawList = [];  
+const textureFigMap = new Map();
+
+
+  //
+  //  Storing Vertices and Colors. 
+  //  
+
+
+const  vertices = [ 
+
+-1, -1,-1, 1,         
+1,-1,-1,1,  
+1, 1,-1,1,
+-1, 1,-1, 1,  
+
+-1,-1, 1,1,   
+1,-1, 1, 1,
+1, 1, 1, 1, 
+-1, 1, 1, 1, 
+
+-1,-1,-1,  1,
+-1, 1,-1, 1,
+-1, 1, 1, 1,
+-1,-1, 1, 1, 
+
+1,-1,-1, 1,
+1, 1,-1, 1,
+1, 1, 1, 1,
+1,-1, 1,1, 
+
+-1,-1,-1,  1,
+-1,-1, 1, 1,
+1,-1, 1, 1,
+1,-1,-1,1, 
+
+-1, 1,-1, 1,
+-1, 1, 1, 1,
+1, 1, 1, 1,
+1, 1,-1, 1
+];  
+
+
+var indices = [ 
+  0,1,2, 0,2,3, 4,5,6, 4,6,7,
+  8,9,10, 8,10,11, 12,13,14, 12,14,15,
+  16,17,18, 16,18,19, 20,21,22, 20,22,23 
+];    
+   
+
+
+var Pvertices =  [   
+
+// Front face
+0.0,  1.0,  0.0, 1.0, 
+-1.0, -1.0,  1.0, 1.0, 
+1.0, -1.0,  1.0, 1.0,
+// Right face
+0.0,  1.0,  0.0, 1.0, 
+1.0, -1.0,  1.0, 1.0,
+1.0, -1.0, -1.0, 1.0, 
+// Back face
+0.0,  1.0,  0.0, 1.0,
+1.0, -1.0, -1.0,  1.0,
+-1.0, -1.0, -1.0, 1.0,
+// Left face
+0.0,  1.0,  0.0, 1.0,
+-1.0, -1.0, -1.0, 1.0,
+-1.0, -1.0,  1.0, 1.0,
+//bottom1 leftonyrotv
+-1.0, -1.0,  1.0, 1.0,
+-1.0, -1.0, -1.0,  1.0,
+1.0, -1.0,  1.0,  1.0,
+//bottom2 rightonyrot
+-1.0, -1.0, -1.0,  1.0,
+1.0, -1.0, -1.0,  1.0,
+1.0, -1.0,  1.0, 1.0, 
+     ];   
+  
+ var pyr_indices = [ 
+   0,1,2, 
+   3,4,5,
+   6,7,8,
+   9,10,11,
+   12,13,14,
+   15,16,17
+ ]
+
+
+
+
+
+
+function updateFormSelect() {
+  selectedIndex = document.getElementById("selectTheFigure").selectedIndex;
+  selectedFigure = drawList[selectedIndex];
+} 
+
+</script> 
+
+
+<form>
+  <select id="selectTheFigure" onclick="updateFormSelect()">
+    <option value="" selected data-default>choose the figure</option>
+  </select>
+</form>  
+<br> 
+<button id= "addSphere">Add Sphere</button>   
+<button id= "addCube">Add Cube</button>  
+<button id= "addPyr">Add Pyramid</button> 
+
+
+    <!-- Movement -->   
+
+
+    <table> 
+      <tr> 
+      <td>  <b>Figure  move: </b> </td> 
+      <td>
+    <div>
+         X -10<input id="xMoveCube" type="range"
+      min="-10" max="10" step="1" value="0" />
+      10
+     </div> 
+    </td> 
+    <td> 
+     <div>
+        Y  -10<input id="yMoveCube" type="range"
+        min="-10" max="10" step="1" value="0" />
+        10
+       </div> 
+       </td> 
+       <td>
+       <div>
+          Z  -10<input id="zMoveCube" type="range"
+          min="-10" max="10" step="1" value="-3" />
+          10
+         </div>  
+         
+         </td> 
+         </tr> 
+
+        </table>  
+
+
+
+
+
+<!--============== All the scales and buttons  ================================-->   
+
+<table>  
+  <tr> 
+  <td>    <b> Ambient Color Change  </b>         </td> 
+   
+    <td> 
+      <input  id="ambientColor" type="color" value ="#000000"> 
+    </td>   
+
+  </tr> 
+</table>  
+
+<table>  
+  <tr> 
+
+
+
+    <td> 
+      <b> Diffuse Color 1 </b>    <input  id="diffuseColor1" type="color" value ="#FFFFFF"> 
+    </td>  
+    <td> 
+      <b> Diffuse Color 2 </b>    <input  id="diffuseColor2" type="color" value ="#FFFFFF"> 
+    </td>  
+    <td> 
+      <b> Diffuse Color 3 </b>      <input  id="diffuseColor3" type="color" value ="#FFFFFF"> 
+    </td>
+
+  </tr>  
+
+
+  <tr>  
+    <td> 
+      <b> Specular Color 1 </b>     <input  id="specularColor1" type="color" value ="#FFFFFF"> 
+    </td>  
+    <td> 
+      <b> Specular  Color 2 </b>    <input  id="specularColor2" type="color" value ="#FFFFFF"> 
+    </td>  
+    <td> 
+      <b> Specular Color 3 </b>    <input  id="specularColor3" type="color" value ="#FFFFFF"> 
+    </td>
+  </tr> 
+   
+
+  <tr> 
+    <td> 
+  <div>
+      <b> Shininess 1 </b>  0.1<input id="shine1" type="range"
+    min="0.1" max="1.0" step="0.1" value="1.0" />
+    1
+   </div> 
+  </td>  
+
+  <td>  
+   <div>
+    <b> Shininess 2 </b>  0.1<input id="shine2" type="range"
+      min="0.1" max="1.0" step="0.1" value="1.0" />
+      1
+     </div> 
+     </td>  
+
+     <td>
+     <div>
+      <b> Shininess 3 </b> 0.1<input id="shine3" type="range"
+        min="0.1" max="1.0" step="0.1" value="1.0" /> 
+        1
+       </div>  
+       
+       </td> 
+       </tr> 
+
+
+</table>
+
+
+<table> 
+  <tr> 
+  <td>  <b>Light1 translation: </b> </td> 
+  <td> 
+<div>
+     X -10<input id="xLight1" type="range"
+  min="-10.0" max="10.0" step="1.0" value="-2.0" />
+  10
+ </div> 
+</td> 
+<td> 
+ <div>
+    Y  -10<input id="yLight1" type="range"
+    min="-10.0" max="10.0" step="1.0" value="3.0" />
+    10
+   </div> 
+   </td> 
+   <td>
+   <div>
+      Z  -10<input id="zLight1" type="range"
+      min="-10.0" max="10.0" step="1.0" value="0.0" />
+      10
+     </div>  
+     
+     </td> 
+     </tr> 
+
+    <tr> 
+     <td>  <b> Light2 translation:  </b> </td>     
+     <td> 
+<div>
+   X -10<input id="xLight2" type="range"
+  min="-10.0" max="10.0" step="1.0" value="0.0" />
+  10
+ </div> 
+  </td>  
+  <td> 
+ <div>
+     Y  -10<input id="yLight2" type="range"
+    min="-10.0" max="10.0" step="1.0" value="-3.0" />
+    10 
+   </div>  
+    </td>  
+    <td>
+   
+   <div>
+      Z  -10<input id="zLight2" type="range"
+      min="-10.0" max="10.0" step="1.0" value="0.0" />
+      10
+     </div>   
+     </td>  
+     </tr>   
+
+     <tr> 
+      <td> <b> Light3 translation  </b> </td> 
+      <td>
+<div>
+  X -10<input id="xLight3" type="range"
+  min="-10.0" max="10.0" step="1.0" value="3.0" />
+  10
+ </div> 
+    </td>  
+
+    <td>
+ <div>
+  Y  -10<input id="yLight3" type="range"
+    min="-10.0" max="10.0" step="1.0" value="2.0" />
+    10
+   </div> 
+   </td>  
+   <td> 
+   <div>
+      Z  -10 <input id="zLight3" type="range"
+      min="-10.0" max="10.0" step="1.0" value="0.0" />
+      10
+     </div>  
+    </td>  
+    </tr> 
+     <br>  
+     <br>  
+    </table>  
+
+
+
+
+
+
+
+    
+
+
+
+
+
+
+   
+<hr>
+Load OBJ
+<input type="file" id="file-input" style="font-size: 15px; " /><button id="load">Load obj</button>
+<br><br>
+Texture
+<input type="file" class="texture" style="font-size: 15px;" /> 
+<hr> 
+
+ 
+
+ <!-- Scales --> 
+ <table>  
+   
+  <tr>  
+<!--  Cube  -->  
+<td> <b> Figure Scaling  </b>   </td>
+<td>  
+<div>  
+   X  1<input id="xScaleCube" type="range"
+  min="1" max="5" step="1" value="1" />
+  5
+ </div> 
+</td> 
+<td> 
+<div>
+   Y  1<input id="yScaleCube" type="range"
+    min="1" max="5" step="1" value="1" />
+    5
+</div> 
+ </td> 
+ <td> 
+  <div>
+      Z   1<input id="zScaleCube" type="range"
+      min="1" max="5" step="1" value="1" />
+      5 
+ </div>  
+  </td>  
+  </tr>  
+
+  </table>
+
+
+
+    <!-- CAMERA -->   
+
+    <br>  
+    <br> 
+
+     <table >  
+       <tr>  
+        
+      <td>  <b>Camera </b> </td> 
+       
+      <td> 
+     <div>
+            X  -20<input id="xPosCam" type="range"
+      min="-20" max="20" step="2" value="0" />
+      20
+     </div> 
+      </td> 
+      <td> 
+     <div>
+           Y   -20<input id="yPosCam" type="range"
+        min="-20" max="20" step="2" value="0" />
+        20
+       </div> 
+     </td> 
+     <td> 
+       <div>
+         Z -20<input id="zPosCam" type="range"
+          min="-20" max="20" step="2" value="8" />
+          20
+         </div>  
+         
+      </td>   
+      </tr>  
+      </table>  
+
+
+      <!-- Perspective/ Projection   --> 
+
+      <br>
+      <br> 
+    <table>
+     <tr > 
+       <td> <b> Perspective </b>  </td>  
+     <td>  
+     <div>
+      FoV   1<input id="FoV" type="range"
+       min="1" max="179" step="10" value="70" />
+       179
+      </div>   
+    </td>  
+
+    <td> 
+      <div>
+        Aspect:  0<input id="aspectSlider" type="range"
+        min="0.0" max="3.0" step="0.2" value = "canvas.width/canvas.height" /> 3 
+        
+       </div>     
+
+       </td> 
+
+      </tr>   
+      <tr>  
+        <td> </td>
+        <td> 
+      <div>
+         Near perspective: 0.1 <input id="nearProj" type="range"
+         min="0.1" max="20.1" step="1.0" value="0.1" />
+         21.1
+        </div>   
+          </td> 
+          <td> 
+
+        <div>
+        .   Far perspective:  0<input id="farProj" type="range"
+          min="0.0" max="100.0" step="10.0" value="100.0" />
+          100 
+         </div>    
+         </td> 
+         </tr> 
+    </table> 
+
+        <p> <b> !! Rotations. Give it a spin !!   </b> </p>
+    
+ <!-- Buttons  -->  
+
+ <br> 
+ <p>  </p>
+ <button id= "upVecCam"> Magic! aka upVec </button>   
+ <p>  </p> 
+  
+
+
+   
+     <button id= "cubeRotateX">Rotate Figure on X</button>  
+     <button id= "cubeRotateY">Rotate Figure on Y</button> 
+     <button id= "cubeRotateZ"> Rotate Figure on Z </button>    
+       <p> </p>
+
+
+
+
+
+     <script type="text/javascript" src="Common/webgl-utils.js"></script>
+     <script type="text/javascript" src="Common/initShaders.js"></script>
+     <script type="text/javascript" src="Common/MV.js"></script>
+     <script type="text/javascript" src="main2.js"></script>
+   
+
+    
+
+
+</body>
+</html> 
